@@ -64,7 +64,10 @@ Follow these basic steps to get the project environment set up locally.
 * Desktop robotic arm
   * SO-101
 * Tactile sensors (e.g., FSRs)
+  * MPU6050 (IMU)
+  * RF-PUL9Z-V1 (3*3 arrays FSR)
 * Microcontroller (e.g., Arduino Uno / ESP32)
+  * ESP S3-N16R8
 
 ### Software Installation
 1. Clone this repository:

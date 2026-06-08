@@ -62,6 +62,7 @@ Follow these basic steps to get the project environment set up locally.
 
 ### Hardware Prerequisites
 * Desktop robotic arm
+  * SO-101
 * Tactile sensors (e.g., FSRs)
 * Microcontroller (e.g., Arduino Uno / ESP32)
 

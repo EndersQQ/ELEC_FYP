@@ -62,7 +62,7 @@ Follow these basic steps to get the project environment set up locally.
 
 ### Hardware Prerequisites
 * Desktop robotic arm
-  * ### [SO-101](https://detail.tmall.com/item.htm?id=877820346195&mi_id=0000GWePVsvihkKQUBkkJnvlV2pHYiWvdknwj__MyhtBL24&skuId=5717396944174&spm=tbpc.boughtlist.suborder_itemtitle.1.1bcd2e8drKDPLW)
+  * [SO-101](https://detail.tmall.com/item.htm?id=877820346195&mi_id=0000GWePVsvihkKQUBkkJnvlV2pHYiWvdknwj__MyhtBL24&skuId=5717396944174&spm=tbpc.boughtlist.suborder_itemtitle.1.1bcd2e8drKDPLW)
 * Tactile sensors (e.g., FSRs)
 * Microcontroller (e.g., Arduino Uno / ESP32)
 

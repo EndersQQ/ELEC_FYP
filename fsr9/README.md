@@ -11,6 +11,9 @@ This project contains the first long-term software stack for the SO-101 gripper 
 Start here:
 
 - Architecture notes: `docs/software_architecture.md`
+- Summary log: `docs/summary-log.md`
+- Next-session handoff: `docs/next-session-handoff.md`
+- GitHub workflow: `docs/github-workflow.md`
 - Firmware: `src/main.cpp`
 - Parser: `host/so101_sensing/parser.py`
 - Recorder: `tools/record_sensor_log.py`

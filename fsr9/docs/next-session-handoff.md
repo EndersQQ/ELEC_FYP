@@ -1,4 +1,6 @@
-# Handoff For Next Session
+# Next Session Handoff
+
+Update this file at the end of each development session. Keep it short, practical, and focused on what the next session needs to know immediately.
 
 ## Current Project Location
 

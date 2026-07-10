@@ -1,4 +1,8 @@
-# SO-101 Gripper Sensing Project Summary
+# SO-101 Gripper Sensing Summary Log
+
+Use this file as the rolling summary of major project updates. Add the newest update near the top when the project changes.
+
+## 2026-07-10 Initial Software Stack
 
 ## Project Goal
 
@@ -110,8 +114,8 @@ Added documentation:
 
 - `README.md`
 - `docs/software_architecture.md`
-- `docs/PROJECT_SUMMARY.md`
-- `docs/HANDOFF_NEXT_SESSION.md`
+- `docs/summary-log.md`
+- `docs/next-session-handoff.md`
 
 ## Verification Completed
 

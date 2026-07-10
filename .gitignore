@@ -1,0 +1,25 @@
+# PlatformIO
+.pio/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local bridge/runtime files
+.ui-bridge.log
+.ui-bridge.pid
+
+# Data and generated experiment outputs
+data/raw/
+data/processed/
+*.bag
+*.mcap
+
+# Editor caches
+.vscode/.browse_c_cpp.db*
+.vscode/ipch/
+
+# OS files
+.DS_Store
+Thumbs.db

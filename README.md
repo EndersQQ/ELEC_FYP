@@ -1,75 +1,78 @@
-<a id="readme-top"></a>
+# ELEC_FYP
 
-<br />
-<div align="center">
-  <a href="https://github.com/your_username/ELEC_FYP">
-    <img src="images/logo.png" alt="Logo" width="80" height="80" fallback="🤖">
-  </a>
+Final-year project repository for an SO-101 robotic gripper sensing stack.
 
-  <h3 align="center">ELEC_FYP</h3>
+The current work focuses on combining tactile sensing, IMU data, camera perception, and robot control so the SO-101 arm can detect contact, understand grasp quality, and eventually learn object-grasping behavior from recorded demonstrations.
 
-  <p align="center">
-    A tactile-sensing gripper module for a low-cost desktop robotic arm.
-    <br />
-    <a href="https://github.com/your_username/ELEC_FYP/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/your_username/ELEC_FYP/issues">Request Feature</a>
-  </p>
-</div>
+## Current Modules
 
+### FSR9 Gripper Sensor Stack
 
+Location:
 
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li><a href="#about-the-project">About The Project</a></li>
-    <li><a href="#built-with">Built With</a></li>
-    <li><a href="#getting-started">Getting Started</a></li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contact">Contact</a></li>
-  </ol>
-</details>
+```text
+fsr9/
+```
 
+Includes:
 
+- ESP32-S3 firmware for a 9-zone FSR pressure array.
+- Structured serial `FRAME` packets with timestamps, sequence numbers, pressure values, and reserved IMU fields.
+- Browser UI for live pressure visualization.
+- Python parser and dataset recorder.
+- ROS 2 bridge scaffold.
+- Project summary and handoff documents.
 
-## About The Project
+Start here:
 
-This project focuses on designing and building an affordable, intelligent gripper module capable of tactile sensing. It is designed to be easily integrated into low-cost desktop robotic arms to allow for safe object handling and feedback.
+- [FSR9 README](fsr9/README.md)
+- [Software architecture](fsr9/docs/software_architecture.md)
+- [Summary log](fsr9/docs/summary-log.md)
+- [Next-session handoff](fsr9/docs/next-session-handoff.md)
+- [GitHub workflow](fsr9/docs/github-workflow.md)
 
-### Key Features:
-* **Tactile Feedback:** Senses grip pressure to prevent crushing sensitive objects.
-* **Low Cost:** Designed using affordable sensors and 3D-printed components.
-* **Modular Design:** Easily adaptable to various desktop robotic arms.
+## Hardware Direction
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Planned system:
 
+- SO-101 robotic arm.
+- RF-PUL9Z-V1 3x3 FSR array.
+- MPU6050 or equivalent IMU, exact integration still to be finalized.
+- ESP32-S3 microcontroller.
+- Two IMX335 cameras:
+  - one mounted near the gripper,
+  - one fixed on the table.
 
+## Software Direction
 
-### Built With
+The target software stack is:
 
-* [Arduino](https://www.arduino.cc/) (or C++ / Python — change these to match your project tools)
-* [ROS](https://www.ros.org/)
-* 3D Printing / CAD
+- PlatformIO for ESP32-S3 firmware.
+- Python tools for parsing, logging, and experiment utilities.
+- ROS 2 for robot/sensor integration.
+- LeRobot for SO-101 data collection and imitation learning experiments.
+- OpenCV/GStreamer for camera capture.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Repository Workflow
 
+Use `main` for stable work. Use topic branches for active changes:
 
+```text
+feature/imu-driver
+feature/camera-capture
+feature/ros2-recording
+docs/update-handoff
+experiment/grasp-dataset-v1
+```
 
-## Getting Started
+Before merging or pushing important changes, run:
 
-Follow these basic steps to get the project environment set up locally.
+```bash
+cd fsr9
+/home/enders/.platformio/penv/bin/pio run
+python3 -m unittest discover -s test -p 'test_*.py'
+```
 
-### Hardware Prerequisites
-* Desktop robotic arm
-  * SO-101
-* Tactile sensors (e.g., FSRs)
-  * MPU6050 (IMU)
-  * RF-PUL9Z-V1 (3*3 arrays FSR)
-* Microcontroller (e.g., Arduino Uno / ESP32)
-  * ESP S3-N16R8
+## Status
 
-### Software Installation
-1. Clone this repository:
-   ```sh
-   git clone [https://github.com/your_username/ELEC_FYP.git](https://github.com/your_username/ELEC_FYP.git)
+The first FSR9 software stack has been implemented and tested locally. The next major milestone is adding the real IMU driver and recording synchronized grasping episodes.

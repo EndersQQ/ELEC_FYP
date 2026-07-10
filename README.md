@@ -1,78 +1,83 @@
 # ELEC_FYP
 
-Final-year project repository for an SO-101 robotic gripper sensing stack.
+Final-year project repository for an **SO-101 robotic gripper sensing and learning stack**.
 
-The current work focuses on combining tactile sensing, IMU data, camera perception, and robot control so the SO-101 arm can detect contact, understand grasp quality, and eventually learn object-grasping behavior from recorded demonstrations.
+The goal is to collect synchronized tactile, IMU, camera, and robot-control data so the SO-101 arm can study contact, grasp quality, slip, and eventually learn grasping behavior from demonstrations.
 
-## Current Modules
-
-### FSR9 Gripper Sensor Stack
-
-Location:
+## Repository Layout
 
 ```text
-fsr9/
+so-101/
+  sensors/
+    fsr9/                 ESP32-S3 PlatformIO project for the 9-zone FSR tactile array
+    imu/                  Real IMU integration notes and future driver work
+
+  perception/
+    camera/               Logitech/UVC setup camera and future dual IMX335 camera plan
+
+  control/                SO-101 robot control, action logging, and future LeRobot work
+
+  software/
+    host/                 Reusable Python package for parsing sensor frames and camera helpers
+    tools/                Dataset recording, camera checks, and baseline ML training scripts
+    web-ui/               Browser pressure monitor
+    scripts/              Host-side setup and UI helper scripts
+    test/                 Python unit tests
+
+  ros2_ws/                ROS 2 bridge workspace
+  docs/                   Project summaries, architecture, handoff, and training guides
+  data/                   Local experiment outputs; raw data and trained models are ignored by Git
 ```
 
-Includes:
+## Start Here
 
-- ESP32-S3 firmware for a 9-zone FSR pressure array.
-- Structured serial `FRAME` packets with timestamps, sequence numbers, pressure values, and reserved IMU fields.
-- Browser UI for live pressure visualization.
-- Python parser and dataset recorder.
-- ROS 2 bridge scaffold.
-- Project summary and handoff documents.
+- [Project summary](so-101/docs/PROJECT_SUMMARY.md)
+- [Repository map](so-101/docs/repository-map.md)
+- [Camera ML training guide](so-101/docs/camera-ml-training.md)
+- [Software architecture](so-101/docs/software-architecture.md)
+- [Next-session handoff](so-101/docs/next-session-handoff.md)
 
-Start here:
+## Common Commands
 
-- [FSR9 README](fsr9/README.md)
-- [Software architecture](fsr9/docs/software_architecture.md)
-- [Summary log](fsr9/docs/summary-log.md)
-- [Next-session handoff](fsr9/docs/next-session-handoff.md)
-- [GitHub workflow](fsr9/docs/github-workflow.md)
-
-## Hardware Direction
-
-Planned system:
-
-- SO-101 robotic arm.
-- RF-PUL9Z-V1 3x3 FSR array.
-- MPU6050 or equivalent IMU, exact integration still to be finalized.
-- ESP32-S3 microcontroller.
-- Two IMX335 cameras:
-  - one mounted near the gripper,
-  - one fixed on the table.
-
-## Software Direction
-
-The target software stack is:
-
-- PlatformIO for ESP32-S3 firmware.
-- Python tools for parsing, logging, and experiment utilities.
-- ROS 2 for robot/sensor integration.
-- LeRobot for SO-101 data collection and imitation learning experiments.
-- OpenCV/GStreamer for camera capture.
-
-## Repository Workflow
-
-Use `main` for stable work. Use topic branches for active changes:
-
-```text
-feature/imu-driver
-feature/camera-capture
-feature/ros2-recording
-docs/update-handoff
-experiment/grasp-dataset-v1
-```
-
-Before merging or pushing important changes, run:
+Build the FSR9 firmware:
 
 ```bash
-cd fsr9
+cd so-101/sensors/fsr9
 /home/enders/.platformio/penv/bin/pio run
+```
+
+Run Python tests:
+
+```bash
+cd so-101/software
 python3 -m unittest discover -s test -p 'test_*.py'
 ```
 
-## Status
+Set up camera/ML tools:
 
-The first FSR9 software stack has been implemented and tested locally. The next major milestone is adding the real IMU driver and recording synchronized grasping episodes.
+```bash
+cd so-101
+./software/scripts/setup_camera_ml_env.sh
+source software/.venv/bin/activate
+```
+
+Record one camera plus FSR episode:
+
+```bash
+python software/tools/record_multimodal_episode.py \
+  --camera setup=/dev/video0 \
+  --serial-port /dev/ttyUSB0 \
+  --duration 30
+```
+
+Train the starter contact/no-contact model:
+
+```bash
+python software/tools/train_contact_baseline.py data/raw --camera setup
+```
+
+## Branch Policy
+
+This repository should use **one stable branch: `main`**.
+
+Temporary branches can be used locally while developing, but GitHub should only keep `main` unless a separate branch is intentionally needed for review.

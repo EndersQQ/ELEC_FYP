@@ -1,0 +1,6 @@
+-r requirements.txt
+
+opencv-python>=4.10,<5
+numpy>=1.26
+scikit-learn>=1.5
+joblib>=1.4

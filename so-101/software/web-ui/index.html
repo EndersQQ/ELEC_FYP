@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SO-101 Pressure Monitor</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --bg: #f5f7f8;
+        --ink: #172126;
+        --muted: #66757c;
+        --line: #d6dee2;
+        --panel: #ffffff;
+        --cold: #e7edf0;
+        --warm: #ffb84d;
+        --hot: #ef4e4e;
+        --active: #117d7a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+      }
+
+      main {
+        width: min(980px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 720;
+        letter-spacing: 0;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 4px;
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      button {
+        min-height: 40px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: 8px;
+        padding: 0 14px;
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: #0f6f6d;
+        background: var(--active);
+        color: white;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 1fr) 270px;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .cell {
+        position: relative;
+        min-height: 160px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(0deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.52)),
+          var(--cold);
+        overflow: hidden;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .cell::before {
+        content: "";
+        position: absolute;
+        inset: auto 0 0 0;
+        height: var(--fill, 0%);
+        background: linear-gradient(0deg, var(--hot), var(--warm));
+        opacity: 0.9;
+        transition: height 25ms linear;
+      }
+
+      .cell > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .cell.disconnected {
+        color: #8a989f;
+        background: #edf1f3;
+      }
+
+      .cell.disconnected::before {
+        display: none;
+      }
+
+      .label {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 720;
+      }
+
+      .position {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+        text-transform: uppercase;
+      }
+
+      .percent {
+        font-size: clamp(34px, 8vw, 64px);
+        line-height: 0.95;
+        font-weight: 780;
+        letter-spacing: 0;
+      }
+
+      .raw {
+        color: var(--muted);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .side {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 16px;
+      }
+
+      .metric {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric:last-child {
+        border-bottom: 0;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .metric-value {
+        margin-top: 4px;
+        font-size: 20px;
+        font-weight: 760;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .log {
+        margin-top: 12px;
+        min-height: 42px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      @media (max-width: 760px) {
+        header,
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .actions {
+          width: 100%;
+        }
+
+        button {
+          flex: 1;
+        }
+
+        .cell {
+          min-height: 118px;
+          padding: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>SO-101 Pressure Monitor</h1>
+          <div class="status" id="status">Connect to the ESP32-S3 serial data stream.</div>
+        </div>
+        <div class="actions">
+          <button class="primary" id="connect" type="button">Connect Web Serial</button>
+          <button id="calibrate-idle" type="button" disabled>Calibrate Idle</button>
+          <button id="calibrate-max" type="button" disabled>Calibrate Max</button>
+          <button id="disconnect" type="button" disabled>Disconnect</button>
+        </div>
+      </header>
+
+      <section class="layout">
+        <div class="grid" id="grid"></div>
+
+        <aside class="side">
+          <div class="metric">
+            <div class="metric-label">Strongest</div>
+            <div class="metric-value" id="strongest">None</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Connected Sensors</div>
+            <div class="metric-value" id="connected">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Last Update</div>
+            <div class="metric-value" id="last-update">--</div>
+          </div>
+          <div class="log" id="log"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const BAUD_RATE = 115200;
+      const layout = [
+        [3, 6, 9],
+        [2, 5, 8],
+        [1, 4, 7],
+      ];
+      const names = {
+        1: "Bottom Left",
+        2: "Middle Left",
+        3: "Top Left",
+        4: "Bottom Mid",
+        5: "Center",
+        6: "Top Mid",
+        7: "Bottom Right",
+        8: "Middle Right",
+        9: "Top Right",
+      };
+
+      const grid = document.querySelector("#grid");
+      const statusEl = document.querySelector("#status");
+      const connectButton = document.querySelector("#connect");
+      const calibrateIdleButton = document.querySelector("#calibrate-idle");
+      const calibrateMaxButton = document.querySelector("#calibrate-max");
+      const disconnectButton = document.querySelector("#disconnect");
+      const strongestEl = document.querySelector("#strongest");
+      const connectedEl = document.querySelector("#connected");
+      const lastUpdateEl = document.querySelector("#last-update");
+      const logEl = document.querySelector("#log");
+      const cells = new Map();
+
+      let port;
+      let reader;
+      let keepReading = false;
+      let eventSource;
+
+      function buildGrid() {
+        grid.innerHTML = "";
+        for (const row of layout) {
+          for (const sensorNumber of row) {
+            const cell = document.createElement("div");
+            cell.className = "cell disconnected";
+            cell.dataset.sensor = sensorNumber;
+            cell.innerHTML = `
+              <div class="label">
+                <span>S${sensorNumber}</span>
+                <span class="position">${names[sensorNumber]}</span>
+              </div>
+              <div class="percent">--%</div>
+              <div class="raw">raw --</div>
+            `;
+            grid.append(cell);
+            cells.set(sensorNumber, cell);
+          }
+        }
+      }
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function setLog(text) {
+        logEl.textContent = text;
+      }
+
+      function updateButtons(connected) {
+        connectButton.disabled = connected;
+        calibrateIdleButton.disabled = !connected;
+        calibrateMaxButton.disabled = !connected;
+        disconnectButton.disabled = !connected;
+      }
+
+      function setCell(sensorNumber, raw, percent) {
+        const cell = cells.get(sensorNumber);
+        const percentEl = cell.querySelector(".percent");
+        const rawEl = cell.querySelector(".raw");
+
+        if (raw < 0 || percent < 0) {
+          cell.classList.add("disconnected");
+          cell.style.setProperty("--fill", "0%");
+          percentEl.textContent = "--%";
+          rawEl.textContent = "raw --";
+          return;
+        }
+
+        cell.classList.remove("disconnected");
+        cell.style.setProperty("--fill", `${percent}%`);
+        percentEl.textContent = `${percent}%`;
+        rawEl.textContent = `raw ${raw}`;
+      }
+
+      function parseDataLine(line) {
+        const parts = line.trim().split(",");
+        if (parts[0] === "STATUS") {
+          if (parts[1] === "calibrating") {
+            setStatus("Calibrating idle. Do not press the pads.");
+          }
+          if (parts[1] === "ready") {
+            connectedEl.textContent = `S1-S${parts[2]}`;
+            setStatus("Receiving sensor data.");
+          }
+          if (parts[1] === "calibration_loaded") {
+            connectedEl.textContent = `S1-S${parts[2]}`;
+            setStatus("Loaded saved calibration. Receiving sensor data.");
+          }
+          if (parts[1] === "calibration_saved") {
+            setLog("Calibration saved on the ESP32-S3.");
+          }
+          if (parts[1] === "calibration_cleared") {
+            setLog("Calibration cleared. Recalibrating idle.");
+          }
+          if (parts[1] === "frame_schema") {
+            setLog(`Sensor frame schema v${parts[2]}.`);
+          }
+          if (parts[1] === "max_calibrating") {
+            setStatus("Calibrating max. Press each connected pad hard.");
+            setLog("You have about 7 seconds. Press S1-S4 hard one by one.");
+          }
+          if (parts[1] === "max_ready") {
+            connectedEl.textContent = `S1-S${parts[2]}`;
+            setStatus("Max calibration saved. Receiving sensor data.");
+            setLog("");
+          }
+          if (parts[1] === "bridge_connected") {
+            setStatus("Bridge connected. Waiting for ESP32 data.");
+          }
+          if (parts[1] === "bridge_error") {
+            setStatus("Bridge cannot read the serial port.");
+            setLog(parts.slice(2).join(","));
+          }
+          return;
+        }
+
+        if (parts[0] === "FRAME") {
+          if (parts.length < 32) {
+            return;
+          }
+
+          const schema = Number(parts[1]);
+          const sequence = Number(parts[2]);
+          const deviceMs = Number(parts[3]);
+          const dtMs = Number(parts[4]);
+          const connectedCount = Number(parts[5]);
+          const imuStatus = Number(parts[24]);
+          let strongestSensor = null;
+          let strongestPercent = -1;
+
+          if (schema !== 1) {
+            setStatus(`Unsupported sensor frame schema v${schema}.`);
+            return;
+          }
+
+          connectedEl.textContent = connectedCount > 0 ? `S1-S${connectedCount}` : "--";
+
+          for (let sensorNumber = 1; sensorNumber <= 9; sensorNumber += 1) {
+            const raw = Number(parts[6 + (sensorNumber - 1) * 2]);
+            const percent = Number(parts[7 + (sensorNumber - 1) * 2]);
+            setCell(sensorNumber, raw, percent);
+
+            if (percent >= 0 && percent > strongestPercent) {
+              strongestSensor = sensorNumber;
+              strongestPercent = percent;
+            }
+          }
+
+          if (strongestSensor && strongestPercent >= 0) {
+            strongestEl.textContent = `S${strongestSensor} ${strongestPercent}%`;
+          } else {
+            strongestEl.textContent = "None";
+          }
+
+          setStatus(imuStatus === 1 ? "Receiving FSR and IMU data." : "Receiving FSR data. IMU driver not configured.");
+          lastUpdateEl.textContent = `#${sequence} ${dtMs} ms`;
+          setLog(`Device time ${deviceMs} ms`);
+          return;
+        }
+
+        if (parts[0] !== "DATA" || parts.length < 19) {
+          return;
+        }
+
+        let strongestSensor = null;
+        let strongestPercent = -1;
+
+        for (let sensorNumber = 1; sensorNumber <= 9; sensorNumber += 1) {
+          const raw = Number(parts[1 + (sensorNumber - 1) * 2]);
+          const percent = Number(parts[2 + (sensorNumber - 1) * 2]);
+          setCell(sensorNumber, raw, percent);
+
+          if (percent > strongestPercent) {
+            strongestSensor = sensorNumber;
+            strongestPercent = percent;
+          }
+        }
+
+        if (strongestSensor && strongestPercent >= 0) {
+          strongestEl.textContent = `S${strongestSensor} ${strongestPercent}%`;
+        } else {
+          strongestEl.textContent = "None";
+        }
+
+        lastUpdateEl.textContent = new Date().toLocaleTimeString();
+      }
+
+      async function readLoop() {
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (port?.readable && keepReading) {
+          reader = port.readable.getReader();
+          try {
+            while (keepReading) {
+              const { value, done } = await reader.read();
+              if (done) {
+                break;
+              }
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split(/\r?\n/);
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                parseDataLine(line);
+              }
+            }
+          } finally {
+            reader.releaseLock();
+            reader = null;
+          }
+        }
+      }
+
+      async function connect() {
+        if (!("serial" in navigator)) {
+          setStatus("Web Serial is not available in this browser.");
+          setLog("Use Chrome or Edge, then open this page from localhost or a file URL.");
+          return;
+        }
+
+        try {
+          port = await navigator.serial.requestPort();
+          await port.open({ baudRate: BAUD_RATE });
+          keepReading = true;
+          updateButtons(true);
+          setStatus("Connected. Waiting for data.");
+          setLog("Reset the ESP32 if calibration/status does not appear.");
+          readLoop();
+        } catch (error) {
+          setStatus("Connection failed.");
+          setLog(error.message);
+        }
+      }
+
+      async function disconnect() {
+        keepReading = false;
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (reader) {
+          await reader.cancel();
+        }
+        if (port) {
+          await port.close();
+        }
+        port = null;
+        updateButtons(false);
+        setStatus("Disconnected.");
+      }
+
+      async function sendCalibration(path, command, status, log) {
+        setStatus(status);
+        setLog(log);
+
+        if (location.port === "8090") {
+          const response = await fetch(path, { method: "POST" });
+          if (!response.ok) {
+            setStatus("Could not send calibration command.");
+            setLog(await response.text());
+          }
+          return;
+        }
+
+        if (port?.writable) {
+          const writer = port.writable.getWriter();
+          try {
+            await writer.write(new TextEncoder().encode(`${command}\n`));
+          } finally {
+            writer.releaseLock();
+          }
+        }
+      }
+
+      async function calibrateIdle() {
+        await sendCalibration(
+          "/calibrate-idle",
+          "IDLE",
+          "Calibrating idle. Do not press the pads.",
+          "Release all sensors until calibration finishes."
+        );
+      }
+
+      async function calibrateMax() {
+        await sendCalibration(
+          "/calibrate-max",
+          "MAX",
+          "Calibrating max. Press each connected pad hard.",
+          "You have about 7 seconds. Press S1-S4 hard one by one."
+        );
+      }
+
+      function connectBridge() {
+        if (eventSource) {
+          eventSource.close();
+        }
+
+        eventSource = new EventSource("/events");
+        updateButtons(true);
+        setStatus("Bridge mode. Waiting for ESP32 data.");
+        setLog("Close PlatformIO Serial Monitor if the bridge reports that the port is busy.");
+
+        eventSource.onmessage = (event) => {
+          parseDataLine(event.data);
+        };
+
+        eventSource.onerror = () => {
+          setStatus("Bridge connection lost.");
+          setLog("Restart the bridge server if this keeps happening.");
+        };
+      }
+
+      disconnectButton.addEventListener("click", disconnect);
+      calibrateIdleButton.addEventListener("click", calibrateIdle);
+      calibrateMaxButton.addEventListener("click", calibrateMax);
+
+      buildGrid();
+      updateButtons(false);
+      if (location.port === "8090") {
+        connectButton.textContent = "Reconnect Bridge";
+        connectButton.addEventListener("click", connectBridge);
+        connectBridge();
+      } else {
+        connectButton.addEventListener("click", connect);
+      }
+    </script>
+  </body>
+</html>

@@ -1,10 +1,13 @@
 # PlatformIO
 .pio/
+so-101/sensors/fsr9/.pio/
 
 # Python
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+so-101/software/.venv/
 
 # Local bridge/runtime files
 .ui-bridge.log
@@ -13,6 +16,8 @@ __pycache__/
 # Data and generated experiment outputs
 data/raw/
 data/processed/
+so-101/data/raw/
+so-101/data/processed/
 *.bag
 *.mcap
 

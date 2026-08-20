@@ -2,6 +2,49 @@
 
 Use this file as the rolling summary of major project updates. Add the newest update near the top when the project changes.
 
+## 2026-08-20 SO-101 Leader/Follower Bring-Up
+
+Enabled and debugged the SO-101 leader/follower teleoperation path using LeRobot.
+
+Completed:
+
+- Installed LeRobot 0.4.4 with Feetech support in `sensors/fsr9/.venv_lerobot`.
+- Confirmed serial device roles:
+  - `/dev/ttyACM0` is the SO-101 follower motor bus.
+  - `/dev/ttyACM1` is the SO-101 leader motor bus.
+  - `/dev/ttyUSB0` is the ESP32-S3 FSR/IMU sensor stream.
+- Verified both SO-101 buses can see Feetech motor IDs 1-6.
+- Recalibrated the leader arm after the leader gripper initially reported a fixed position.
+- Restored follower gripper response after reconnecting follower power.
+- Fixed reversed follower gripper direction by setting follower `gripper.drive_mode` to `1` in the LeRobot calibration file and writing it to the follower motors.
+- Fixed unsafe leader/follower role swaps after USB replug by switching teleoperation commands from `/dev/ttyACM*` names to stable `/dev/serial/by-id/...` paths.
+
+Relevant calibration files:
+
+```text
+/home/enders/.cache/huggingface/lerobot/calibration/robots/so_follower/so101_follower.json
+/home/enders/.cache/huggingface/lerobot/calibration/teleoperators/so_leader/so101_leader.json
+```
+
+Current teleoperation command:
+
+```bash
+cd /home/enders/Documents/ELEC_FYP/so-101/sensors/fsr9
+.venv_lerobot/bin/lerobot-teleoperate \
+  --robot.type=so101_follower \
+  --robot.port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013655-if00 \
+  --robot.id=so101_follower \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013954-if00 \
+  --teleop.id=so101_leader
+```
+
+Remaining trim:
+
+- Follower `wrist_roll` is slightly left when the leader wrist is visually perpendicular.
+- This appears to be a small follower mechanical zero/offset trim, not a mapping failure; live readings showed leader and follower wrist-roll values were very close.
+- Suggested adjustment is to reduce follower `wrist_roll.homing_offset` by about `114` ticks in `so101_follower.json`, then write the edited calibration back to the follower motors by running follower calibration and pressing Enter to reuse the file.
+
 ## 2026-07-10 Repository Reorganization
 
 Reorganized the GitHub-facing repository from a top-level `fsr9/` folder into a professional SO-101 project layout:

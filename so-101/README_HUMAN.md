@@ -1,149 +1,103 @@
-# SO-101 Human Operator README
+# SO-101 Gripper Sensing Stack
 
-This project is the SO-101 gripper sensing and teleoperation workspace. It combines:
+This repository contains the public working parts of an SO-101 gripper sensing and teleoperation project.
 
-- SO-101 leader/follower arm control through LeRobot.
-- ESP32-S3 firmware for a 9-zone FSR pressure sensor.
-- Reserved IMU fields for future gripper IMU data.
-- Host tools for recording sensor/camera data.
-- A browser pressure monitor and ROS 2 bridge scaffold.
+## Public Scope
 
-## Current Working Setup
+This repo currently includes:
 
-Run commands from:
+- ESP32-S3 firmware for a 9-zone FSR tactile sensor.
+- Host-side Python tools for parsing and recording sensor streams.
+- A browser pressure-monitor UI.
+- ROS 2 bridge scaffolding for publishing sensor data.
+- Camera and dataset tooling for future grasping experiments.
 
-```bash
-cd /home/enders/Documents/ELEC_FYP/so-101/sensors/fsr9
-```
+Private lab notes, daily logs, calibration history, hardware troubleshooting notes, and AI handoff details are not kept in the public repository.
 
-Use the LeRobot virtual environment installed here:
+## Repository Layout
 
 ```text
-/home/enders/Documents/ELEC_FYP/so-101/sensors/fsr9/.venv_lerobot
+so-101/
+  sensors/fsr9/          ESP32-S3 FSR tactile firmware
+  sensors/imu/           IMU integration area
+  perception/camera/     Camera setup notes
+  control/               Robot control planning area
+  software/              Python host tools, package, UI, scripts, and tests
+  ros2_ws/               ROS 2 bridge workspace
+  docs/                  Public project documentation
+  data/                  Local data output area
 ```
 
-Do not use `/dev/ttyACM0` or `/dev/ttyACM1` directly for the arms. Those names can swap after unplugging USB.
+## Firmware
 
-Use the stable USB paths:
-
-```text
-Follower arm: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013655-if00
-Leader arm:   /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013954-if00
-FSR board:    /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A5069RR4-if00-port0
-```
-
-Check them with:
+Build the FSR firmware from `so-101/sensors/fsr9`:
 
 ```bash
-ls -l /dev/serial/by-id
+pio run
 ```
 
-## Teleoperation
-
-Use this command:
+Upload with the correct local serial port for your ESP32-S3 board:
 
 ```bash
-.venv_lerobot/bin/lerobot-teleoperate \
-  --robot.type=so101_follower \
-  --robot.port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013655-if00 \
-  --robot.id=so101_follower \
-  --teleop.type=so101_leader \
-  --teleop.port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013954-if00 \
-  --teleop.id=so101_leader
+pio run --target upload --upload-port <sensor-port>
 ```
 
-Stop immediately if a joint moves unexpectedly. Power down the arms before changing wiring or calibration.
-
-## Calibration Files
-
-LeRobot stores calibration outside the repo:
-
-```text
-Follower: /home/enders/.cache/huggingface/lerobot/calibration/robots/so_follower/so101_follower.json
-Leader:   /home/enders/.cache/huggingface/lerobot/calibration/teleoperators/so_leader/so101_leader.json
-```
-
-The follower gripper direction has already been fixed by setting:
-
-```json
-"gripper": {
-    "drive_mode": 1
-}
-```
-
-## Calibrate Leader
-
-```bash
-.venv_lerobot/bin/lerobot-calibrate \
-  --teleop.type=so101_leader \
-  --teleop.port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013954-if00 \
-  --teleop.id=so101_leader
-```
-
-If asked whether to use the saved calibration or run calibration:
-
-- Press Enter to reuse the saved calibration.
-- Type `c` and press Enter to recalibrate.
-
-When recalibrating, move every joint through its intended range. Move the gripper fully open and fully closed.
-
-## Calibrate Follower
-
-```bash
-.venv_lerobot/bin/lerobot-calibrate \
-  --robot.type=so101_follower \
-  --robot.port=/dev/serial/by-id/usb-1a86_USB_Single_Serial_5B7B013655-if00 \
-  --robot.id=so101_follower
-```
-
-Press Enter to reuse the edited calibration file. Type `c` only when you want a full recalibration.
-
-## ESP32-S3 FSR Firmware
-
-Firmware path:
-
-```text
-sensors/fsr9/
-```
-
-Build:
-
-```bash
-/home/enders/.platformio/penv/bin/pio run
-```
-
-Upload:
-
-```bash
-./scripts/upload_safe.sh /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A5069RR4-if00-port0
-```
-
-The firmware streams:
+The firmware streams structured serial frames for downstream tools:
 
 ```text
 FRAME,<schema>,<seq>,<ms>,<dt_ms>,<connected>,<raw1>,<pct1>,...,<raw9>,<pct9>,<imu_status>,<ax>,<ay>,<az>,<gx>,<gy>,<gz>,<temp_c>
 ```
 
-## FSR Web UI
+## Host Tools
 
-Start the pressure monitor:
+Python tools live under `so-101/software`.
+
+Run tests:
 
 ```bash
-cd /home/enders/Documents/ELEC_FYP/so-101/software
-./scripts/start_ui.sh /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A5069RR4-if00-port0
+cd so-101/software
+python3 -m unittest discover -s test -p 'test_*.py'
 ```
 
-Open:
+Record sensor data:
+
+```bash
+cd so-101
+python software/tools/record_sensor_log.py --port <sensor-port> --format jsonl
+```
+
+Start the browser UI:
+
+```bash
+cd so-101/software
+./scripts/start_ui.sh <sensor-port>
+```
+
+Then open:
 
 ```text
 http://127.0.0.1:8090
 ```
 
-## Open Issues
+## Robot Teleoperation
 
-These are not fixed yet:
+SO-101 leader/follower teleoperation is developed with LeRobot. Local serial device names and calibration values are machine-specific and are intentionally not documented in this public README.
 
-- Hot IMU: https://github.com/EndersQQ/ELEC_FYP/issues/8
-- Follower wrist_roll visual offset: https://github.com/EndersQQ/ELEC_FYP/issues/9
+For a local setup, prefer persistent `/dev/serial/by-id/...` paths instead of `/dev/ttyACM*` names, because Linux may reorder `ttyACM` devices after USB replug.
 
-Do not reconnect the IMU if it gets hot within seconds. Check wiring with power off first.
+## Public Status
+
+Working public components:
+
+- FSR firmware and serial frame format.
+- Host parser and recorder tools.
+- Browser pressure monitor.
+- ROS 2 bridge scaffold.
+- Initial camera/data recording utilities.
+
+Private/internal components:
+
+- Daily lab logs.
+- Calibration files and exact local hardware mappings.
+- Debugging history and unresolved hardware notes.
+- AI handoff notes.

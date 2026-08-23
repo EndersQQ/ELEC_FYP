@@ -1,34 +1,22 @@
 #include <Arduino.h>
 #include <Preferences.h>
+#include <Wire.h>
 
 /*
-  RF-PUL9Z-V1 9-zone FSR array + IMU-ready gripper sensor node for ESP32-S3.
+  RF-PUL9Z-V1 9-zone FSR array for ESP32-S3.
 
-  Sensor connector from the datasheet:
-    C 1 2 3 4 5 6 7 8 9
+  Voltage divider wiring (pressure raises the ADC reading):
+    3.3V -> sensor C/common -> FSR point N -> ADC pin -> resistor -> GND
 
-  External resistor wiring for each sensing point:
-    3.3V -> 2k resistor -> ADC pin -> FSR point N -> sensor C -> GND
-
-  The GPIO/ADC pin is the shared point between the 2k resistor and the FSR.
-
-  Serial protocol:
+  Serial:
     STATUS,<state>[,<detail>...]
-    FRAME,<schema>,<seq>,<ms>,<dt_ms>,<connected>,<raw1>,<pct1>...<raw9>,<pct9>,
-          <imu_status>,<ax>,<ay>,<az>,<gx>,<gy>,<gz>,<temp_c>
-
-  IMU status:
-    0 = not configured / not available
-    1 = valid sample
-
-  The IMU fields are intentionally part of the stable frame now, even before a
-  specific IMU driver is selected. Add the real driver inside readImuSample().
+    FRAME,<schema>,<seq>,<ms>,<dt_ms>,9,<raw1>,<pct1>...<raw9>,<pct9>,
+          <imu_ok>,<ax>,<ay>,<az>,<gx>,<gy>,<gz>,<temp_c>
 */
 
 struct SensorPoint {
   uint8_t sensorNumber;
   uint8_t pin;
-  const char *label;
 };
 
 struct ImuSample {
@@ -44,44 +32,51 @@ struct ImuSample {
 
 constexpr uint8_t FRAME_SCHEMA_VERSION = 1;
 constexpr uint32_t CALIBRATION_MAGIC = 0x46535239;  // "FSR9"
-constexpr uint8_t CALIBRATION_VERSION = 1;
-constexpr float VCC = 3.3F;
+constexpr uint8_t CALIBRATION_VERSION = 4;
 constexpr uint16_t ADC_MAX = 4095;
-constexpr uint8_t MEDIAN_SAMPLES_PER_POINT = 7;
+constexpr uint8_t MEDIAN_SAMPLES_PER_POINT = 5;
 constexpr uint16_t IDLE_CALIBRATION_SAMPLES = 180;
-constexpr uint32_t MAX_CALIBRATION_MS = 7000;
-constexpr uint32_t PRINT_INTERVAL_MS = 30;
-constexpr uint16_t MIN_DEADBAND = 45;
-constexpr uint16_t MIN_VALID_RANGE = 180;
-constexpr uint8_t ADC_DISCARD_READS = 5;
-constexpr uint16_t ADC_SETTLE_US = 1000;
-constexpr uint16_t ADC_SAMPLE_GAP_US = 500;
+constexpr uint32_t PRINT_INTERVAL_MS = 20;
+constexpr uint16_t MIN_DEADBAND = 70;
+constexpr uint16_t MIN_ACTIVE_RISE = 80;
+constexpr uint8_t ADC_DISCARD_READS = 2;
+constexpr uint16_t ADC_SETTLE_US = 250;
+constexpr uint16_t ADC_SAMPLE_GAP_US = 100;
 constexpr uint8_t CONNECTED_SENSOR_COUNT = 9;
+constexpr uint8_t MPU6050_SDA_PIN = 17;
+constexpr uint8_t MPU6050_SCL_PIN = 18;
+constexpr uint32_t MPU6050_I2C_FREQUENCY = 400000;
+constexpr uint8_t MPU6050_ADDRESS_LOW = 0x68;
+constexpr uint8_t MPU6050_ADDRESS_HIGH = 0x69;
+constexpr uint8_t MPU6050_REG_ACCEL_XOUT_H = 0x3B;
+constexpr uint8_t MPU6050_REG_PWR_MGMT_1 = 0x6B;
+constexpr uint8_t MPU6050_REG_WHO_AM_I = 0x75;
 
-// Grid labels from the datasheet drawing:
+// Sensor layout:
 //   3 6 9
 //   2 5 8
 //   1 4 7
 SensorPoint SENSOR_PINS[9] = {
-    {1, 1, "bottom-left "},
-    {2, 2, "middle-left "},
-    {3, 3, "top-left    "},
-    {4, 4, "bottom-mid  "},
-    {5, 5, "center      "},
-    {6, 6, "top-mid     "},
-    {7, 7, "bottom-right"},
-    {8, 8, "middle-right"},
-    {9, 9, "top-right   "},
+    {1, 1},
+    {2, 2},
+    {3, 3},
+    {4, 4},
+    {5, 5},
+    {6, 6},
+    {7, 7},
+    {8, 8},
+    {9, 9},
 };
 
 Preferences preferences;
 uint16_t idleRawBySensor[10] = {};
-uint16_t maxPressRawBySensor[10] = {};
 uint16_t smoothedRawBySensor[10] = {};
 uint16_t deadbandBySensor[10] = {};
 uint8_t displayPercentBySensor[10] = {};
 String commandBuffer;
 uint32_t frameSequence = 0;
+uint8_t mpu6050Address = 0;
+bool mpu6050Ready = false;
 
 void readSerialCommands();
 
@@ -131,24 +126,35 @@ void readAllSensors(uint16_t rawBySensor[10]) {
       smoothedRawBySensor[sensor.sensorNumber] = raw;
     } else {
       smoothedRawBySensor[sensor.sensorNumber] =
-          ((smoothedRawBySensor[sensor.sensorNumber] * 7U) + raw + 4U) / 8U;
+          ((smoothedRawBySensor[sensor.sensorNumber] * 3U) + raw + 2U) / 4U;
     }
 
     rawBySensor[sensor.sensorNumber] = smoothedRawBySensor[sensor.sensorNumber];
+
+    const uint8_t sensorNumber = sensor.sensorNumber;
+    const uint16_t idleRaw = idleRawBySensor[sensorNumber];
+    const uint16_t deadband = deadbandBySensor[sensorNumber];
+    if (idleRaw > deadband && rawBySensor[sensorNumber] + deadband < idleRaw) {
+      idleRawBySensor[sensorNumber] = rawBySensor[sensorNumber];
+    }
   }
 }
 
 uint8_t pressToPercent(uint8_t sensorNumber, uint16_t raw) {
   const uint16_t idleRaw = idleRawBySensor[sensorNumber];
-  const uint16_t maxPressRaw = maxPressRawBySensor[sensorNumber];
   const uint16_t deadband = deadbandBySensor[sensorNumber];
 
-  if (idleRaw <= maxPressRaw + MIN_VALID_RANGE || raw + deadband >= idleRaw) {
+  if (static_cast<uint32_t>(raw) <=
+      static_cast<uint32_t>(idleRaw) + deadband + MIN_ACTIVE_RISE) {
     return 0;
   }
 
-  const uint16_t activeRange = idleRaw - maxPressRaw - deadband;
-  const uint16_t press = idleRaw - raw - deadband;
+  if (static_cast<uint32_t>(idleRaw) + deadband >= ADC_MAX) {
+    return 0;
+  }
+
+  const uint16_t activeRange = ADC_MAX - idleRaw - deadband;
+  const uint16_t press = raw - idleRaw - deadband;
   const uint32_t percent = (static_cast<uint32_t>(press) * 100U) / activeRange;
   return min<uint32_t>(percent, 100U);
 }
@@ -161,9 +167,9 @@ uint8_t smoothPercent(uint8_t sensorNumber, uint8_t targetPercent) {
   }
 
   if (targetPercent > displayPercent) {
-    displayPercent += max<uint8_t>(1, (targetPercent - displayPercent + 1) / 2);
+    displayPercent += max<uint8_t>(1, (targetPercent - displayPercent + 2) / 3);
   } else if (targetPercent < displayPercent) {
-    displayPercent -= max<uint8_t>(1, (displayPercent - targetPercent + 3) / 4);
+    displayPercent -= max<uint8_t>(1, (displayPercent - targetPercent + 1) / 2);
   }
 
   if (displayPercent < 3) {
@@ -194,7 +200,6 @@ void saveCalibration() {
   for (uint8_t i = 0; i < connectedSensorCount(); ++i) {
     const SensorPoint &sensor = SENSOR_PINS[i];
     preferences.putUShort(sensorKey("i", sensor.sensorNumber).c_str(), idleRawBySensor[sensor.sensorNumber]);
-    preferences.putUShort(sensorKey("m", sensor.sensorNumber).c_str(), maxPressRawBySensor[sensor.sensorNumber]);
     preferences.putUShort(sensorKey("d", sensor.sensorNumber).c_str(), deadbandBySensor[sensor.sensorNumber]);
   }
 
@@ -212,10 +217,11 @@ bool loadCalibration() {
     const SensorPoint &sensor = SENSOR_PINS[i];
     const uint8_t sensorNumber = sensor.sensorNumber;
     idleRawBySensor[sensorNumber] = preferences.getUShort(sensorKey("i", sensorNumber).c_str(), 0);
-    maxPressRawBySensor[sensorNumber] = preferences.getUShort(sensorKey("m", sensorNumber).c_str(), 0);
     deadbandBySensor[sensorNumber] = preferences.getUShort(sensorKey("d", sensorNumber).c_str(), MIN_DEADBAND);
 
-    if (idleRawBySensor[sensorNumber] == 0 || idleRawBySensor[sensorNumber] <= maxPressRawBySensor[sensorNumber]) {
+    if (static_cast<uint32_t>(idleRawBySensor[sensorNumber]) +
+            deadbandBySensor[sensorNumber] >=
+        ADC_MAX) {
       return false;
     }
 
@@ -256,8 +262,6 @@ void calibrateIdle() {
         total / (IDLE_CALIBRATION_SAMPLES - 20);
     deadbandBySensor[sensor.sensorNumber] =
         max<uint16_t>(MIN_DEADBAND, highest - lowest);
-    maxPressRawBySensor[sensor.sensorNumber] =
-        idleRawBySensor[sensor.sensorNumber] > 900 ? idleRawBySensor[sensor.sensorNumber] - 900 : 0;
     smoothedRawBySensor[sensor.sensorNumber] = idleRawBySensor[sensor.sensorNumber];
     displayPercentBySensor[sensor.sensorNumber] = 0;
   }
@@ -266,64 +270,134 @@ void calibrateIdle() {
   Serial.printf("STATUS,ready,%u,%lu\n", connectedSensorCount(), PRINT_INTERVAL_MS);
 }
 
-void calibrateMaxPress() {
-  Serial.println("STATUS,max_calibrating");
+bool writeMpuRegister(uint8_t address, uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
+}
 
-  uint16_t lowestRaw[10] = {};
-  for (uint8_t i = 0; i < connectedSensorCount(); ++i) {
-    const SensorPoint &sensor = SENSOR_PINS[i];
-    lowestRaw[sensor.sensorNumber] = idleRawBySensor[sensor.sensorNumber];
+bool readMpuRegister(uint8_t address, uint8_t reg, uint8_t &value) {
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+
+  if (Wire.endTransmission(false) != 0) {
+    return false;
   }
 
-  const uint32_t startMs = millis();
-  while (millis() - startMs < MAX_CALIBRATION_MS) {
-    readSerialCommands();
-
-    for (uint8_t i = 0; i < connectedSensorCount(); ++i) {
-      const SensorPoint &sensor = SENSOR_PINS[i];
-      const uint16_t raw = readMedianRaw(sensor.pin);
-      smoothedRawBySensor[sensor.sensorNumber] =
-          updateTemporarySmooth(smoothedRawBySensor[sensor.sensorNumber], raw);
-      lowestRaw[sensor.sensorNumber] =
-          min<uint16_t>(lowestRaw[sensor.sensorNumber], smoothedRawBySensor[sensor.sensorNumber]);
-    }
-
-    delay(5);
+  if (Wire.requestFrom(address, static_cast<uint8_t>(1)) != 1) {
+    return false;
   }
 
-  for (uint8_t i = 0; i < connectedSensorCount(); ++i) {
-    const SensorPoint &sensor = SENSOR_PINS[i];
-    const uint16_t idleRaw = idleRawBySensor[sensor.sensorNumber];
-    uint16_t learnedMax = lowestRaw[sensor.sensorNumber];
+  value = Wire.read();
+  return true;
+}
 
-    if (idleRaw <= learnedMax + MIN_VALID_RANGE) {
-      learnedMax = idleRaw > 900 ? idleRaw - 900 : 0;
-    }
+bool mpuAddressResponds(uint8_t address) {
+  Wire.beginTransmission(address);
+  return Wire.endTransmission() == 0;
+}
 
-    maxPressRawBySensor[sensor.sensorNumber] = learnedMax;
-    displayPercentBySensor[sensor.sensorNumber] = 0;
+int16_t readWireInt16() {
+  const uint8_t highByte = Wire.read();
+  const uint8_t lowByte = Wire.read();
+
+  return static_cast<int16_t>(
+      (static_cast<uint16_t>(highByte) << 8) | lowByte);
+}
+
+bool initializeMpu6050() {
+  if (mpuAddressResponds(MPU6050_ADDRESS_LOW)) {
+    mpu6050Address = MPU6050_ADDRESS_LOW;
+  } else if (mpuAddressResponds(MPU6050_ADDRESS_HIGH)) {
+    mpu6050Address = MPU6050_ADDRESS_HIGH;
+  } else {
+    Serial.println("STATUS,imu_error,mpu6050_not_found");
+    return false;
   }
 
-  saveCalibration();
-  Serial.printf("STATUS,max_ready,%u,%lu\n", connectedSensorCount(), PRINT_INTERVAL_MS);
+  uint8_t whoAmI = 0;
+  if (!readMpuRegister(mpu6050Address, MPU6050_REG_WHO_AM_I, whoAmI)) {
+    Serial.println("STATUS,imu_error,who_am_i_read_failed");
+    return false;
+  }
+
+  Serial.printf("STATUS,imu_detected,address,0x%02X,who_am_i,0x%02X\n",
+                mpu6050Address, whoAmI);
+
+  if (whoAmI != 0x68) {
+    Serial.printf("STATUS,imu_warning,unexpected_who_am_i,0x%02X\n", whoAmI);
+  }
+
+  if (!writeMpuRegister(mpu6050Address, MPU6050_REG_PWR_MGMT_1, 0x00)) {
+    Serial.println("STATUS,imu_error,wake_failed");
+    return false;
+  }
+
+  delay(100);
+  Serial.println("STATUS,imu_ready,mpu6050");
+  return true;
 }
 
 ImuSample readImuSample() {
-  // Replace this stub with the actual IMU driver once the module is known.
-  return {false, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+  if (!mpu6050Ready) {
+    return {false, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+  }
+
+  Wire.beginTransmission(mpu6050Address);
+  Wire.write(MPU6050_REG_ACCEL_XOUT_H);
+
+  if (Wire.endTransmission(false) != 0) {
+    return {false, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+  }
+
+  constexpr uint8_t SAMPLE_BYTES = 14;
+  if (Wire.requestFrom(mpu6050Address, SAMPLE_BYTES) != SAMPLE_BYTES) {
+    return {false, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
+  }
+
+  const int16_t rawAccelX = readWireInt16();
+  const int16_t rawAccelY = readWireInt16();
+  const int16_t rawAccelZ = readWireInt16();
+  const int16_t rawTemp = readWireInt16();
+  const int16_t rawGyroX = readWireInt16();
+  const int16_t rawGyroY = readWireInt16();
+  const int16_t rawGyroZ = readWireInt16();
+
+  constexpr float ACCEL_LSB_PER_G = 16384.0F;
+  constexpr float GRAVITY_MPS2 = 9.80665F;
+  constexpr float GYRO_LSB_PER_DPS = 131.0F;
+
+  return {
+      true,
+      (rawAccelX / ACCEL_LSB_PER_G) * GRAVITY_MPS2,
+      (rawAccelY / ACCEL_LSB_PER_G) * GRAVITY_MPS2,
+      (rawAccelZ / ACCEL_LSB_PER_G) * GRAVITY_MPS2,
+      rawGyroX / GYRO_LSB_PER_DPS,
+      rawGyroY / GYRO_LSB_PER_DPS,
+      rawGyroZ / GYRO_LSB_PER_DPS,
+      (rawTemp / 340.0F) + 36.53F,
+  };
 }
 
 void handleCommand(const String &command) {
   if (command == "CAL" || command == "IDLE" || command == "TARE" || command == "ZERO") {
     calibrateIdle();
-  } else if (command == "MAX" || command == "MAXCAL") {
-    calibrateMaxPress();
   } else if (command == "CLEAR" || command == "RESETCAL") {
     clearCalibration();
     calibrateIdle();
   } else if (command == "INFO") {
     Serial.printf("STATUS,info,schema,%u,connected,%u,interval_ms,%lu\n",
                   FRAME_SCHEMA_VERSION, connectedSensorCount(), PRINT_INTERVAL_MS);
+  } else if (command == "CALINFO") {
+    for (uint8_t i = 0; i < connectedSensorCount(); ++i) {
+      const SensorPoint &sensor = SENSOR_PINS[i];
+      const uint8_t sensorNumber = sensor.sensorNumber;
+      Serial.printf("STATUS,calinfo,%u,idle,%u,deadband,%u\n",
+                    sensorNumber,
+                    idleRawBySensor[sensorNumber],
+                    deadbandBySensor[sensorNumber]);
+    }
   }
 }
 
@@ -386,6 +460,16 @@ void setup() {
     const SensorPoint &sensor = SENSOR_PINS[i];
     pinMode(sensor.pin, INPUT);
     analogSetPinAttenuation(sensor.pin, ADC_11db);
+  }
+
+  if (!Wire.begin(MPU6050_SDA_PIN, MPU6050_SCL_PIN, MPU6050_I2C_FREQUENCY)) {
+    Serial.println("STATUS,imu_error,i2c_start_failed");
+  } else {
+    Serial.printf("STATUS,i2c_started,sda,%u,scl,%u,frequency,%lu\n",
+                  MPU6050_SDA_PIN,
+                  MPU6050_SCL_PIN,
+                  static_cast<unsigned long>(MPU6050_I2C_FREQUENCY));
+    mpu6050Ready = initializeMpu6050();
   }
 
   if (!loadCalibration()) {

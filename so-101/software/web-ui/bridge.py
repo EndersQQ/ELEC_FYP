@@ -101,7 +101,6 @@ class BridgeHandler(SimpleHTTPRequestHandler):
             "/calibrate": b"IDLE\n",
             "/calibrate-idle": b"IDLE\n",
             "/tare": b"IDLE\n",
-            "/calibrate-max": b"MAX\n",
         }
 
         if path not in commands:

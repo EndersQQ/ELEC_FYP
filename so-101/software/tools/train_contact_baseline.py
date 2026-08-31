@@ -44,9 +44,8 @@ def nearest_sensor_frame(sensor_frames: list[dict[str, Any]], host_time_ns: int,
     return nearest
 
 
-def load_examples(args: argparse.Namespace):
+def load_examples(args: argparse.Namespace, np):
     cv2 = import_cv2()
-    _, np, _, _, _ = import_ml_dependencies()
 
     features = []
     labels = []
@@ -108,7 +107,7 @@ def main() -> int:
         raise SystemExit("No episode directories found.")
 
     joblib, np, LogisticRegression, classification_report, train_test_split = import_ml_dependencies()
-    x, y, examples = load_examples(args)
+    x, y, examples = load_examples(args, np)
 
     if len(set(y.tolist())) < 2:
         raise SystemExit("Training needs both contact and no-contact examples. Record a more varied episode.")

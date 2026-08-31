@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+.venv_lerobot/
 so-101/software/.venv/
 
 # Local bridge/runtime files

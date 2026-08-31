@@ -381,9 +381,9 @@ ImuSample readImuSample() {
 }
 
 void handleCommand(const String &command) {
-  if (command == "CAL" || command == "IDLE" || command == "TARE" || command == "ZERO") {
+  if (command == "IDLE") {
     calibrateIdle();
-  } else if (command == "CLEAR" || command == "RESETCAL") {
+  } else if (command == "CLEAR") {
     clearCalibration();
     calibrateIdle();
   } else if (command == "INFO") {

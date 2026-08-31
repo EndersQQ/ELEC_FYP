@@ -1,5 +1,4 @@
 .pio/
-.venv_lerobot/
 .ui-bridge.log
 .ui-bridge.pid
 .vscode/

@@ -25,7 +25,6 @@ class SerialBridge:
         self.clients = set()
         self.clients_lock = threading.Lock()
         self.write_lock = threading.Lock()
-        self.stop_event = threading.Event()
 
     def start(self):
         thread = threading.Thread(target=self._read_forever, daemon=True)
@@ -69,12 +68,12 @@ class SerialBridge:
             self.publish("STATUS,bridge_error,pyserial is not installed")
             return
 
-        while not self.stop_event.is_set():
+        while True:
             try:
                 with serial.Serial(self.port, BAUD_RATE, timeout=1) as serial_port:
                     self.serial = serial_port
                     self.publish("STATUS,bridge_connected")
-                    while not self.stop_event.is_set():
+                    while True:
                         raw_line = serial_port.readline()
                         if not raw_line:
                             continue
@@ -106,19 +105,12 @@ def make_handler(bridge, root_dir):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            commands = {
-                "/calibrate-idle": "IDLE",
-                "/info": "INFO",
-                "/calinfo": "CALINFO",
-            }
-
-            command = commands.get(path)
-            if not command:
+            if path != "/calibrate-idle":
                 self.send_error(404, "Unknown command")
                 return
 
             try:
-                bridge.send_command(command)
+                bridge.send_command("IDLE")
             except RuntimeError as error:
                 self.send_response(503)
                 self.end_headers()

@@ -1,8 +1,6 @@
 import os
 import shutil
-import signal
 import subprocess
-import sys
 import time
 
 Import("env")
@@ -28,51 +26,18 @@ def stop_port_readers(source, target, env):
 env.AddPreAction("upload", stop_port_readers)
 
 
-def stop_previous_bridge(pid_path):
-    if not os.path.exists(pid_path):
-        return
-
-    try:
-        with open(pid_path, "r", encoding="utf-8") as pid_file:
-            pid = int(pid_file.read().strip())
-        os.kill(pid, signal.SIGTERM)
-        time.sleep(0.4)
-    except (OSError, ValueError):
-        pass
-
-
 def start_ui_bridge(source, target, env):
     project_dir = env.subst("$PROJECT_DIR")
     port = env.GetProjectOption("upload_port", "/dev/ttyUSB0")
-    pid_path = os.path.join(project_dir, ".ui-bridge.pid")
-    log_path = os.path.join(project_dir, ".ui-bridge.log")
-    bridge_path = os.path.join(project_dir, "web-ui", "bridge.py")
-    web_ui_dir = os.path.join(project_dir, "web-ui")
+    web_ui_script = os.path.join(project_dir, "scripts", "web_ui.sh")
 
-    if not os.path.exists(bridge_path):
+    if not os.path.exists(web_ui_script):
         print()
-        print(f"FSR UI bridge not found: {bridge_path}")
+        print(f"FSR UI helper not found: {web_ui_script}")
         print()
         return
 
-    stop_previous_bridge(pid_path)
-
-    with open(log_path, "ab", buffering=0) as log:
-        process = subprocess.Popen(
-            [sys.executable, bridge_path, "--port", port, "--http-port", "8090"],
-            cwd=web_ui_dir,
-            stdout=log,
-            stderr=log,
-            start_new_session=True,
-        )
-
-    with open(pid_path, "w", encoding="utf-8") as pid_file:
-        pid_file.write(str(process.pid))
-
-    print()
-    print("FSR UI bridge restarted:")
-    print("  http://127.0.0.1:8090")
-    print()
+    subprocess.run([web_ui_script, "restart", port], cwd=project_dir, check=False)
 
 
 env.AddPostAction("upload", start_ui_bridge)

@@ -29,3 +29,14 @@ sensor.jsonl
 camera_frames.jsonl
 cameras/<camera-name>/*.jpg
 ```
+
+The labeled sensor recorder writes:
+
+```text
+metadata.json
+summary.json
+sensor.jsonl
+labels.jsonl
+```
+
+Label intervals and sensor frames remain raw inputs. `build_sensor_dataset.py` writes derived feature windows under `data/processed/`.

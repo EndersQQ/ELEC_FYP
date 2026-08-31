@@ -82,11 +82,6 @@
         color: white;
       }
 
-      button:disabled {
-        cursor: not-allowed;
-        opacity: 0.55;
-      }
-
       .layout {
         display: grid;
         grid-template-columns: minmax(280px, 1fr) 270px;
@@ -206,6 +201,39 @@
         font-variant-numeric: tabular-nums;
       }
 
+      .grip-value {
+        color: var(--muted);
+      }
+
+      .grip-value.grabbing {
+        color: var(--active);
+      }
+
+      .pressure-chart {
+        margin-top: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 16px;
+      }
+
+      .pressure-chart h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .pressure-chart p {
+        margin: 4px 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      #sensor-chart {
+        display: block;
+        width: 100%;
+        height: 250px;
+      }
+
       .log {
         margin-top: 12px;
         min-height: 42px;
@@ -310,9 +338,7 @@
           <div class="status" id="status">Connect to the ESP32-S3 serial data stream.</div>
         </div>
         <div class="actions">
-          <button class="primary" id="connect" type="button">Connect Web Serial</button>
-          <button id="calibrate-idle" type="button" disabled>Calibrate Idle</button>
-          <button id="disconnect" type="button" disabled>Disconnect</button>
+          <button class="primary" id="calibrate-idle" type="button">Calibrate Idle</button>
         </div>
       </header>
 
@@ -320,6 +346,10 @@
         <div class="grid" id="grid"></div>
 
         <aside class="side">
+          <div class="metric">
+            <div class="metric-label">Gripper State</div>
+            <div class="metric-value grip-value" id="grip-state">Waiting</div>
+          </div>
           <div class="metric">
             <div class="metric-label">Strongest</div>
             <div class="metric-value" id="strongest">None</div>
@@ -349,10 +379,16 @@
           <div class="log" id="log"></div>
         </aside>
       </section>
+
+      <section class="pressure-chart">
+        <h2>All sensor pressure</h2>
+        <p>Live calibrated pressure for each position in the 3×3 pad.</p>
+        <canvas id="sensor-chart" role="img" aria-label="Bar chart of pressure percentage for sensors 1 through 9"></canvas>
+      </section>
     </main>
 
+    <script src="grab-detector.js"></script>
     <script>
-      const BAUD_RATE = 115200;
       const IMU_TEMP_WARNING_C = 55;
       const IMU_TEMP_CRITICAL_C = 75;
       const IMU_SOUND_REPEAT_MS = 10000;
@@ -375,10 +411,9 @@
 
       const grid = document.querySelector("#grid");
       const statusEl = document.querySelector("#status");
-      const connectButton = document.querySelector("#connect");
       const calibrateIdleButton = document.querySelector("#calibrate-idle");
-      const disconnectButton = document.querySelector("#disconnect");
       const strongestEl = document.querySelector("#strongest");
+      const gripStateEl = document.querySelector("#grip-state");
       const connectedEl = document.querySelector("#connected");
       const lastUpdateEl = document.querySelector("#last-update");
       const imuStatusEl = document.querySelector("#imu-status");
@@ -393,12 +428,11 @@
         tempC: document.querySelector("#imu-temp"),
       };
       const logEl = document.querySelector("#log");
+      const sensorChart = document.querySelector("#sensor-chart");
       const cells = new Map();
+      const grabDetector = new GrabDetector();
+      let latestSensorPercents = Array(9).fill(0);
 
-      let port;
-      let reader;
-      let keepReading = false;
-      let eventSource;
       let audioContext;
       let latestImuTempC = Number.NaN;
       let lastImuSoundAt = 0;
@@ -504,12 +538,6 @@
         updateImuTempWarning(values.tempC, available);
       }
 
-      function updateButtons(connected) {
-        connectButton.disabled = connected;
-        calibrateIdleButton.disabled = !connected;
-        disconnectButton.disabled = !connected;
-      }
-
       function setCell(sensorNumber, raw, percent) {
         const cell = cells.get(sensorNumber);
         const percentEl = cell.querySelector(".percent");
@@ -532,11 +560,89 @@
         rawEl.textContent = rawAtRail && percent === 0 ? `raw ${raw} rail` : `raw ${raw}`;
       }
 
+      function drawSensorChart() {
+        const context = sensorChart.getContext("2d");
+        const bounds = sensorChart.getBoundingClientRect();
+        const pixelRatio = window.devicePixelRatio || 1;
+        const width = Math.max(320, Math.floor(bounds.width));
+        const height = Math.floor(bounds.height);
+        sensorChart.width = width * pixelRatio;
+        sensorChart.height = height * pixelRatio;
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        context.clearRect(0, 0, width, height);
+
+        const styles = getComputedStyle(document.documentElement);
+        const ink = styles.getPropertyValue("--ink").trim();
+        const muted = styles.getPropertyValue("--muted").trim();
+        const line = styles.getPropertyValue("--line").trim();
+        const warm = styles.getPropertyValue("--warm").trim();
+        const hot = styles.getPropertyValue("--hot").trim();
+        const margin = { top: 18, right: 10, bottom: 30, left: 40 };
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+
+        context.font = "12px Inter, system-ui, sans-serif";
+        context.textBaseline = "middle";
+        context.lineWidth = 1;
+        for (const tick of [0, 25, 50, 75, 100]) {
+          const y = margin.top + plotHeight - (tick / 100) * plotHeight;
+          context.strokeStyle = line;
+          context.beginPath();
+          context.moveTo(margin.left, y);
+          context.lineTo(width - margin.right, y);
+          context.stroke();
+          context.fillStyle = muted;
+          context.textAlign = "right";
+          context.fillText(`${tick}%`, margin.left - 7, y);
+        }
+
+        const slotWidth = plotWidth / 9;
+        const barWidth = Math.min(52, slotWidth * 0.62);
+        latestSensorPercents.forEach((value, index) => {
+          const percent = Math.max(0, Math.min(100, value));
+          const barHeight = (percent / 100) * plotHeight;
+          const x = margin.left + index * slotWidth + (slotWidth - barWidth) / 2;
+          const y = margin.top + plotHeight - barHeight;
+          const gradient = context.createLinearGradient(0, margin.top + plotHeight, 0, margin.top);
+          gradient.addColorStop(0, warm);
+          gradient.addColorStop(1, hot);
+          context.fillStyle = gradient;
+          context.fillRect(x, y, barWidth, barHeight);
+
+          context.fillStyle = ink;
+          context.textAlign = "center";
+          context.textBaseline = "alphabetic";
+          context.fillText(`S${index + 1}`, x + barWidth / 2, height - 7);
+          if (percent > 0) {
+            context.fillText(`${Math.round(percent)}%`, x + barWidth / 2, Math.max(12, y - 5));
+          }
+        });
+      }
+
+      function updatePressureAnalysis(sensorPercents) {
+        latestSensorPercents = sensorPercents.map((value) =>
+          Number.isFinite(value) && value > 0 ? value : 0
+        );
+        const result = grabDetector.update(latestSensorPercents);
+        gripStateEl.textContent = result.grabbing ? "GRABBING" : "NOT GRABBING";
+        gripStateEl.classList.toggle("grabbing", result.grabbing);
+        drawSensorChart();
+      }
+
+      function resetPressureAnalysis(label = "Waiting") {
+        grabDetector.reset();
+        latestSensorPercents = Array(9).fill(0);
+        gripStateEl.textContent = label;
+        gripStateEl.classList.remove("grabbing");
+        drawSensorChart();
+      }
+
       function parseDataLine(line) {
         const parts = line.trim().split(",");
         if (parts[0] === "STATUS") {
           if (parts[1] === "calibrating") {
             setStatus("Calibrating idle. Do not press the pads.");
+            resetPressureAnalysis("Calibrating");
           }
           if (parts[1] === "ready") {
             connectedEl.textContent = `S1-S${parts[2]}`;
@@ -561,6 +667,7 @@
           if (parts[1] === "bridge_error") {
             setStatus("Bridge cannot read the serial port.");
             setLog(parts.slice(2).join(","));
+            resetPressureAnalysis("Unavailable");
           }
           if (parts[1] === "imu_detected") {
             setLog(`IMU detected at ${parts[3]}.`);
@@ -597,6 +704,7 @@
           };
           let strongestSensor = null;
           let strongestPercent = -1;
+          const sensorPercents = [];
 
           if (schema !== 1) {
             setStatus(`Unsupported sensor frame schema v${schema}.`);
@@ -609,12 +717,15 @@
             const raw = Number(parts[6 + (sensorNumber - 1) * 2]);
             const percent = Number(parts[7 + (sensorNumber - 1) * 2]);
             setCell(sensorNumber, raw, percent);
+            sensorPercents.push(percent);
 
             if (percent > 0 && percent > strongestPercent) {
               strongestSensor = sensorNumber;
               strongestPercent = percent;
             }
           }
+
+          updatePressureAnalysis(sensorPercents);
 
           if (strongestSensor && strongestPercent > 0) {
             strongestEl.textContent = `S${strongestSensor} ${strongestPercent}%`;
@@ -628,164 +739,34 @@
           setLog(`Device time ${deviceMs} ms`);
           return;
         }
-
-        if (parts[0] !== "DATA" || parts.length < 19) {
-          return;
-        }
-
-        let strongestSensor = null;
-        let strongestPercent = -1;
-
-        for (let sensorNumber = 1; sensorNumber <= 9; sensorNumber += 1) {
-          const raw = Number(parts[1 + (sensorNumber - 1) * 2]);
-          const percent = Number(parts[2 + (sensorNumber - 1) * 2]);
-          setCell(sensorNumber, raw, percent);
-
-          if (percent > strongestPercent) {
-            strongestSensor = sensorNumber;
-            strongestPercent = percent;
-          }
-        }
-
-        if (strongestSensor && strongestPercent >= 0) {
-          strongestEl.textContent = `S${strongestSensor} ${strongestPercent}%`;
-        } else {
-          strongestEl.textContent = "None";
-        }
-
-        lastUpdateEl.textContent = new Date().toLocaleTimeString();
-      }
-
-      async function readLoop() {
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (port?.readable && keepReading) {
-          reader = port.readable.getReader();
-          try {
-            while (keepReading) {
-              const { value, done } = await reader.read();
-              if (done) {
-                break;
-              }
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split(/\r?\n/);
-              buffer = lines.pop() ?? "";
-              for (const line of lines) {
-                parseDataLine(line);
-              }
-            }
-          } finally {
-            reader.releaseLock();
-            reader = null;
-          }
-        }
-      }
-
-      async function connect() {
-        if (!("serial" in navigator)) {
-          setStatus("Web Serial is not available in this browser.");
-          setLog("Use Chrome or Edge, then open this page from localhost or a file URL.");
-          return;
-        }
-
-        try {
-          port = await navigator.serial.requestPort();
-          await port.open({ baudRate: BAUD_RATE });
-          keepReading = true;
-          updateButtons(true);
-          setStatus("Connected. Waiting for data.");
-          setLog("Reset the ESP32 if calibration/status does not appear.");
-          readLoop();
-        } catch (error) {
-          setStatus("Connection failed.");
-          setLog(error.message);
-        }
-      }
-
-      async function disconnect() {
-        keepReading = false;
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
-        }
-        if (reader) {
-          await reader.cancel();
-        }
-        if (port) {
-          await port.close();
-        }
-        port = null;
-        updateButtons(false);
-        setStatus("Disconnected.");
-      }
-
-      async function sendCalibration(path, command, status, log) {
-        setStatus(status);
-        setLog(log);
-
-        if (location.port === "8090") {
-          const response = await fetch(path, { method: "POST" });
-          if (!response.ok) {
-            setStatus("Could not send calibration command.");
-            setLog(await response.text());
-          }
-          return;
-        }
-
-        if (port?.writable) {
-          const writer = port.writable.getWriter();
-          try {
-            await writer.write(new TextEncoder().encode(`${command}\n`));
-          } finally {
-            writer.releaseLock();
-          }
-        }
       }
 
       async function calibrateIdle() {
-        await sendCalibration(
-          "/calibrate-idle",
-          "IDLE",
-          "Calibrating idle. Do not press the pads.",
-          "Release all sensors until calibration finishes."
-        );
-      }
-
-      function connectBridge() {
-        if (eventSource) {
-          eventSource.close();
+        setStatus("Calibrating idle. Do not press the pads.");
+        setLog("Release all sensors until calibration finishes.");
+        const response = await fetch("/calibrate-idle", { method: "POST" });
+        if (!response.ok) {
+          setStatus("Could not send calibration command.");
+          setLog(await response.text());
         }
-
-        eventSource = new EventSource("/events");
-        updateButtons(true);
-        setStatus("Bridge mode. Waiting for ESP32 data.");
-        setLog("Close PlatformIO Serial Monitor if the bridge reports that the port is busy.");
-
-        eventSource.onmessage = (event) => {
-          parseDataLine(event.data);
-        };
-
-        eventSource.onerror = () => {
-          setStatus("Bridge connection lost.");
-          setLog("Restart the bridge server if this keeps happening.");
-        };
       }
 
-      disconnectButton.addEventListener("click", disconnect);
       calibrateIdleButton.addEventListener("click", calibrateIdle);
       window.addEventListener("pointerdown", enableAudioWarnings, { once: true });
       window.addEventListener("keydown", enableAudioWarnings, { once: true });
 
       buildGrid();
-      updateButtons(false);
-      if (location.port === "8090") {
-        connectButton.textContent = "Reconnect Bridge";
-        connectButton.addEventListener("click", connectBridge);
-        connectBridge();
-      } else {
-        connectButton.addEventListener("click", connect);
-      }
+      drawSensorChart();
+      new ResizeObserver(drawSensorChart).observe(sensorChart);
+      const eventSource = new EventSource("/events");
+      setStatus("Waiting for ESP32 data.");
+      setLog("Close PlatformIO Serial Monitor if the bridge reports that the port is busy.");
+      eventSource.onmessage = (event) => parseDataLine(event.data);
+      eventSource.onerror = () => {
+        setStatus("Bridge connection lost.");
+        setLog("Restart the bridge server if this keeps happening.");
+        resetPressureAnalysis("Unavailable");
+      };
     </script>
   </body>
 </html>

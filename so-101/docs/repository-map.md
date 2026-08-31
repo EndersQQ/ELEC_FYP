@@ -10,8 +10,9 @@ so-101/
     fsr9/
       platformio.ini          PlatformIO firmware config
       src/main.cpp            ESP32-S3 FSR tactile firmware
-      scripts/upload_safe.sh  Safe firmware upload helper
       scripts/before_upload.py
+      scripts/web_ui.sh       Start/stop/status helper for the browser monitor
+      web-ui/                 Serial bridge and browser pressure monitor
 
     imu/
       README.md               IMU hardware/driver integration notes
@@ -26,8 +27,8 @@ so-101/
   software/
     host/so101_sensing/       Reusable Python package
     tools/                    Runnable recording/training tools
-    web-ui/                   Browser pressure monitor
-    scripts/                  Host setup and UI scripts
+    notebooks/                Optional Google Colab entrypoints
+    scripts/                  Host setup scripts
     test/                     Python tests
     requirements.txt
     requirements-ml.txt
@@ -38,9 +39,9 @@ so-101/
   docs/
     PROJECT_SUMMARY.md
     camera-ml-training.md
-    next-session-handoff.md
+    sensor-ml-training.md
+    codebase-guide.md
     software-architecture.md
-    summary-log.md
 
   data/
     README.md                 Documents local data layout

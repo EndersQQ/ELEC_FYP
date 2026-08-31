@@ -10,7 +10,7 @@ The goal is to collect synchronized tactile, IMU, camera, and robot-control data
 so-101/
   sensors/
     fsr9/                 ESP32-S3 PlatformIO project for the 9-zone FSR tactile array
-    imu/                  Real IMU integration notes and future driver work
+    imu/                  MPU6050 integration notes
 
   perception/
     camera/               Logitech/UVC setup camera and future dual IMX335 camera plan
@@ -20,8 +20,7 @@ so-101/
   software/
     host/                 Reusable Python package for parsing sensor frames and camera helpers
     tools/                Dataset recording, camera checks, and baseline ML training scripts
-    web-ui/               Browser pressure monitor
-    scripts/              Host-side setup and UI helper scripts
+    scripts/              Host-side setup helpers
     test/                 Python unit tests
 
   ros2_ws/                ROS 2 bridge workspace
@@ -33,9 +32,10 @@ so-101/
 
 - [Project summary](so-101/docs/PROJECT_SUMMARY.md)
 - [Repository map](so-101/docs/repository-map.md)
+- [Codebase guide](so-101/docs/codebase-guide.md)
 - [Camera ML training guide](so-101/docs/camera-ml-training.md)
+- [FSR and IMU training guide](so-101/docs/sensor-ml-training.md)
 - [Software architecture](so-101/docs/software-architecture.md)
-- [Next-session handoff](so-101/docs/next-session-handoff.md)
 
 ## Common Commands
 
@@ -61,6 +61,12 @@ cd so-101
 source software/.venv/bin/activate
 ```
 
+Activate the SO-101/LeRobot control environment:
+
+```bash
+source so-101/.venv_lerobot/bin/activate
+```
+
 Record one camera plus FSR episode:
 
 ```bash
@@ -74,6 +80,20 @@ Train the starter contact/no-contact model:
 
 ```bash
 python software/tools/train_contact_baseline.py data/raw --camera setup
+```
+
+Record labels and train the FSR classifier:
+
+```bash
+python software/tools/record_labeled_sensor_episode.py --port /dev/ttyUSB0
+python software/tools/train_fsr_imu_classifier.py data/raw --modality fsr
+```
+
+Start the pressure monitor:
+
+```bash
+cd so-101/sensors/fsr9
+./scripts/web_ui.sh start /dev/ttyUSB0
 ```
 
 ## Branch Policy

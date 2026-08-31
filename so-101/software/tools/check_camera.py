@@ -16,6 +16,7 @@ from so101_sensing.camera import (  # noqa: E402
     capture_snapshot,
     import_cv2,
     list_video_devices,
+    open_capture,
 )
 
 
@@ -50,9 +51,7 @@ def main() -> int:
 
     if args.preview:
         cv2 = import_cv2()
-        capture = cv2.VideoCapture(config.device)
-        if not capture.isOpened():
-            raise SystemExit(f"Could not open camera {config.name} at {config.device}")
+        capture = open_capture(config)
         try:
             while True:
                 ok, frame = capture.read()

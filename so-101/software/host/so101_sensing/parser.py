@@ -102,9 +102,6 @@ def parse_line(line: str) -> FsrImuFrame | dict[str, Any] | None:
     if kind == "FRAME":
         return _parse_frame(parts, line)
 
-    if kind == "DATA":
-        return _parse_legacy_data(parts, line)
-
     return {"type": "unknown", "raw_line": line}
 
 
@@ -142,31 +139,5 @@ def _parse_frame(parts: list[str], line: str) -> FsrImuFrame | None:
         connected_count=int(parts[5]),
         sensors=sensors,
         imu=imu,
-        raw_line=line,
-    )
-
-
-def _parse_legacy_data(parts: list[str], line: str) -> FsrImuFrame | None:
-    if len(parts) < 19:
-        return None
-
-    sensors = []
-    connected_count = 0
-    for sensor_number in range(1, 10):
-        raw = int(parts[1 + (sensor_number - 1) * 2])
-        percent = int(parts[2 + (sensor_number - 1) * 2])
-        if raw >= 0 and percent >= 0:
-            connected_count = sensor_number
-        x, y = SENSOR_GRID_POSITIONS[sensor_number]
-        sensors.append(SensorPoint(sensor_number, raw, percent, x, y))
-
-    return FsrImuFrame(
-        schema=0,
-        sequence=-1,
-        device_ms=-1,
-        dt_ms=-1,
-        connected_count=connected_count,
-        sensors=sensors,
-        imu=ImuSample(False, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
         raw_line=line,
     )

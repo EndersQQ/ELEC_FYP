@@ -49,7 +49,7 @@ Avoid vague messages such as `update`, `fix`, or `changes`.
 Update these files regularly:
 
 - `so-101/docs/PROJECT_SUMMARY.md`
-- `so-101/docs/summary-log.md`
-- `so-101/docs/next-session-handoff.md`
+- `so-101/docs/codebase-guide.md`
+- `so-101/docs/software-architecture.md`
 
 Use lower-case filenames with hyphens for normal docs. `PROJECT_SUMMARY.md` is the intentional easy-to-find entrypoint.

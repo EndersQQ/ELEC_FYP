@@ -25,7 +25,7 @@ This proves that camera frames and tactile frames can be recorded, aligned, and 
 Run this from the SO-101 project folder:
 
 ```bash
-cd /home/enders/Documents/ELEC_FYP_prepared/so-101
+cd so-101
 ./software/scripts/setup_camera_ml_env.sh
 source software/.venv/bin/activate
 ```

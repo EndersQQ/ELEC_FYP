@@ -37,6 +37,11 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(parsed["state"], "ready")
         self.assertEqual(parsed["fields"], ["9", "30"])
 
+    def test_unknown_line_is_preserved(self):
+        parsed = parse_line("DATA,old,format")
+
+        self.assertEqual(parsed, {"type": "unknown", "raw_line": "DATA,old,format"})
+
 
 if __name__ == "__main__":
     unittest.main()

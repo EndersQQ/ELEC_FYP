@@ -10,14 +10,14 @@ This folder keeps project notes that should be updated often.
 - `repository-map.md`  
   What each top-level folder and important file is for.
 
+- `codebase-guide.md`
+  What every executable source file does and how data moves through the system.
+
 - `camera-ml-training.md`  
   How to record camera data, train the starter model, and find saved outputs.
 
-- `summary-log.md`  
-  Rolling summary of major project updates. Add new entries near the top.
-
-- `next-session-handoff.md`  
-  Practical handoff for the next work session. Refresh this at the end of each session.
+- `sensor-ml-training.md`
+  How to label FSR/IMU episodes, train sensor classifiers, and run live inference.
 
 - `software-architecture.md`  
   Current software architecture, commands, and integration direction.
